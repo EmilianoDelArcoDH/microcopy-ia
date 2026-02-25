@@ -1,8 +1,10 @@
 import { useEffect, useMemo, useState } from 'react';
 import { ACTIVITY_REGISTRY } from './core/activityRegistry';
-import { actualizarQueryParams, leerQueryParams } from './core/query';
-import type { ActivityId, LangCode, QueryState, Variant } from './core/types';
+import { leerQueryParams } from './core/query';
+import type { LangCode, QueryState } from './core/types';
 import { ActivityShell } from './ui/ActivityShell';
+
+const SESSION_RESET_KEY = 'microcopy-ia:activity-state-reset-v1';
 
 const textosApp: Record<
   LangCode,
@@ -76,26 +78,19 @@ const textosApp: Record<
   },
 };
 
-const opcionesActividadPorIdioma: Record<LangCode, Array<{ id: ActivityId; label: string }>> = {
-  es: [
-    { id: 'microcopy-ia-01', label: '01 · Prompt guiado' },
-    { id: 'microcopy-ia-02', label: '02 · Elegí la mejor opción' },
-    { id: 'microcopy-ia-03', label: '03 · Auditoría de microcopy' },
-  ],
-  en: [
-    { id: 'microcopy-ia-01', label: '01 · Guided prompt' },
-    { id: 'microcopy-ia-02', label: '02 · Choose the best option' },
-    { id: 'microcopy-ia-03', label: '03 · Broken microcopy audit' },
-  ],
-  pt: [
-    { id: 'microcopy-ia-01', label: '01 · Prompt guiado' },
-    { id: 'microcopy-ia-02', label: '02 · Escolha a melhor opção' },
-    { id: 'microcopy-ia-03', label: '03 · Auditoria de microcopy' },
-  ],
-};
-
 function App(): JSX.Element {
   const [query, setQuery] = useState<QueryState>(() => leerQueryParams());
+
+  useEffect(() => {
+    const resetDone = window.sessionStorage.getItem(SESSION_RESET_KEY);
+    if (resetDone) {
+      return;
+    }
+
+    const keysToRemove = Object.keys(window.localStorage).filter((key) => key.startsWith('activity:'));
+    keysToRemove.forEach((key) => window.localStorage.removeItem(key));
+    window.sessionStorage.setItem(SESSION_RESET_KEY, '1');
+  }, []);
 
   useEffect(() => {
     const onPopState = (): void => setQuery(leerQueryParams());
@@ -104,23 +99,7 @@ function App(): JSX.Element {
   }, []);
 
   const textos = useMemo(() => textosApp[query.lang], [query.lang]);
-  const opcionesActividad = useMemo(() => opcionesActividadPorIdioma[query.lang], [query.lang]);
   const config = ACTIVITY_REGISTRY[query.a];
-
-  const handleLangChange = (lang: LangCode): void => {
-    const next = actualizarQueryParams({ lang });
-    setQuery(next);
-  };
-
-  const handleActivityChange = (activityId: ActivityId): void => {
-    const next = actualizarQueryParams({ a: activityId });
-    setQuery(next);
-  };
-
-  const handleVariantChange = (variant: Variant): void => {
-    const next = actualizarQueryParams({ variant });
-    setQuery(next);
-  };
 
   return (
     <div className="app-shell">
@@ -128,34 +107,6 @@ function App(): JSX.Element {
         <div>
           <h1>{textos.titulo}</h1>
           <p>{textos.subtitulo}</p>
-        </div>
-
-        <div className="header-actions">
-          <label className="field-inline">
-            {textos.actividad}
-            <select value={query.a} onChange={(event) => handleActivityChange(event.target.value as ActivityId)}>
-              {opcionesActividad.map((opcion) => (
-                <option key={opcion.id} value={opcion.id}>
-                  {opcion.label}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="field-inline">
-            {textos.idioma}
-            <select value={query.lang} onChange={(event) => handleLangChange(event.target.value as LangCode)}>
-              <option value="es">{textos.idiomaOptions.es}</option>
-              <option value="en">{textos.idiomaOptions.en}</option>
-              <option value="pt">{textos.idiomaOptions.pt}</option>
-            </select>
-          </label>
-          <label className="field-inline">
-            {textos.variante}
-            <select value={query.variant} onChange={(event) => handleVariantChange(event.target.value as Variant)}>
-              <option value="src">src</option>
-              <option value="solution">solution</option>
-            </select>
-          </label>
         </div>
       </header>
 

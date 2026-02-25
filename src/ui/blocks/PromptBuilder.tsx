@@ -90,7 +90,7 @@ export function PromptBuilder({ config, state, setState, lang }: BlockProps): JS
         <strong>{t.max}</strong> {maxWords} {t.words}
       </p>
 
-      <div className="card">
+      <div className="helper-box">
         <h4>{t.helperTitle}</h4>
         <p className="muted">{t.helperDescription}</p>
         <pre className="prompt-helper">{ejemploPrompt}</pre>

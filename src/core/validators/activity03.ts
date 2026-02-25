@@ -1,5 +1,5 @@
 import type { ActivityConfig, ActivityState, LangCode } from '../types';
-import { contarPalabras, normalizarTexto } from './common';
+import { checklistCompletoReal, compactarEspacios, contarPalabras, esTextoConContenido, normalizarTexto } from './common';
 
 const palabrasGenericas = ['click', 'aquí', 'aca', 'más', 'ver', 'enviar'];
 const regexAccion = /(revisá|revisa|completá|completa|intentá|intenta)/i;
@@ -23,6 +23,10 @@ const texts: Record<
     explainWhat: string;
     explainAction: string;
     missingInputRow: string;
+    missingInputProposal: string;
+    inputProposalShort: string;
+    shortProposal: (tipo: string, min: number) => string;
+    needChecklist: string;
     missingLabel: string;
     placeholderPrefix: string;
   }
@@ -37,6 +41,10 @@ const texts: Record<
     explainWhat: 'El mensaje de error debe explicar qué pasó.',
     explainAction: 'El mensaje de error debe indicar qué hacer (por ejemplo: revisá, completá o intentá).',
     missingInputRow: 'Falta la fila de propuesta para el input.',
+    missingInputProposal: 'La propuesta textual del input no puede estar vacía.',
+    inputProposalShort: 'La propuesta del input debe tener al menos 8 caracteres y 2 palabras.',
+    shortProposal: (tipo, min) => `La propuesta de ${tipo} debe tener al menos ${min} caracteres con contenido claro.`,
+    needChecklist: 'Debés completar todo el checklist humano antes de validar.',
     missingLabel: 'La propuesta del input debe incluir un label.',
     placeholderPrefix: 'El placeholder del input debe comenzar con "Ej:".',
   },
@@ -50,6 +58,10 @@ const texts: Record<
     explainWhat: 'The error message must explain what happened.',
     explainAction: 'The error message must tell what to do next (for example: revisá, completá or intentá).',
     missingInputRow: 'The input proposal row is missing.',
+    missingInputProposal: 'The input text proposal cannot be empty.',
+    inputProposalShort: 'The input proposal must have at least 8 characters and 2 words.',
+    shortProposal: (tipo, min) => `The ${tipo} proposal must have at least ${min} characters with clear content.`,
+    needChecklist: 'You must complete the full human checklist before validating.',
     missingLabel: 'The input proposal must include a label.',
     placeholderPrefix: 'The input placeholder must start with "Ej:".',
   },
@@ -63,6 +75,10 @@ const texts: Record<
     explainWhat: 'A mensagem de erro deve explicar o que aconteceu.',
     explainAction: 'A mensagem de erro deve indicar o que fazer (por exemplo: revisá, completá ou intentá).',
     missingInputRow: 'Falta a linha de proposta para o input.',
+    missingInputProposal: 'A proposta textual do input não pode estar vazia.',
+    inputProposalShort: 'A proposta do input deve ter pelo menos 8 caracteres e 2 palavras.',
+    shortProposal: (tipo, min) => `A proposta de ${tipo} deve ter pelo menos ${min} caracteres com conteúdo claro.`,
+    needChecklist: 'Você deve completar todo o checklist humano antes de validar.',
     missingLabel: 'A proposta do input deve incluir um label.',
     placeholderPrefix: 'O placeholder do input deve começar com "Ej:".',
   },
@@ -98,17 +114,25 @@ export function validateAuditoriaActividad03(_config: ActivityConfig, state: Act
     if (words < 2 || words > 5) {
       errores.push(t.buttonWords);
     }
+    if (!esTextoConContenido(filaBoton.propuesta, 8, 2)) {
+      errores.push(t.shortProposal(tipos.boton, 8));
+    }
   }
 
   if (!filaLink || !filaLink.propuesta.trim()) {
     errores.push(t.missingLink);
   } else if (contarPalabras(filaLink.propuesta) < 3) {
     errores.push(t.linkWords);
+  } else if (!esTextoConContenido(filaLink.propuesta, 10, 3)) {
+    errores.push(t.shortProposal(tipos.link, 10));
   }
 
   if (!filaError || !filaError.propuesta.trim()) {
     errores.push(t.missingError);
   } else {
+    if (!esTextoConContenido(filaError.propuesta, 14, 4)) {
+      errores.push(t.shortProposal(tipos.error, 14));
+    }
     if (!regexPaso.test(filaError.propuesta)) {
       errores.push(t.explainWhat);
     }
@@ -120,12 +144,21 @@ export function validateAuditoriaActividad03(_config: ActivityConfig, state: Act
   if (!filaInput) {
     errores.push(t.missingInputRow);
   } else {
+    if (!compactarEspacios(filaInput.propuesta)) {
+      errores.push(t.missingInputProposal);
+    } else if (!esTextoConContenido(filaInput.propuesta, 8, 2)) {
+      errores.push(t.inputProposalShort);
+    }
     if (!filaInput.label.trim()) {
       errores.push(t.missingLabel);
     }
     if (!filaInput.placeholder.trim().startsWith('Ej:')) {
       errores.push(t.placeholderPrefix);
     }
+  }
+
+  if (!checklistCompletoReal(state.checklistMarcado, _config.checklistHumano)) {
+    errores.push(t.needChecklist);
   }
 
   return errores;
