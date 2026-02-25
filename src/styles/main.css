@@ -87,6 +87,16 @@ body {
     font-size: 1.05rem;
 }
 
+.home-card h2 {
+    margin: 0;
+}
+
+.home-actions {
+    margin-top: 12px;
+    display: grid;
+    gap: 10px;
+}
+
 .alumno-help ol {
     margin: 0;
     padding-left: 18px;

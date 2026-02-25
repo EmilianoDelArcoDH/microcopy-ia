@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { ACTIVITY_REGISTRY } from './core/activityRegistry';
-import { leerQueryParams } from './core/query';
-import type { LangCode, QueryState } from './core/types';
+import { actualizarQueryParams, leerQueryParams } from './core/query';
+import type { ActivityId, LangCode, QueryState } from './core/types';
 import { ActivityShell } from './ui/ActivityShell';
 
 const SESSION_RESET_KEY = 'microcopy-ia:activity-state-reset-v1';
@@ -15,6 +15,9 @@ const textosApp: Record<
     idiomaOptions: { es: string; en: string; pt: string };
     actividadNoEncontrada: string;
     actividadNoEncontradaTitulo: string;
+    homeTitle: string;
+    homeSubtitle: string;
+    start: string;
     actividad: string;
     variante: string;
     guiaTitulo: string;
@@ -29,6 +32,9 @@ const textosApp: Record<
     idiomaOptions: { es: 'Español', en: 'English', pt: 'Português' },
     actividadNoEncontrada: 'La actividad solicitada no existe en el registro.',
     actividadNoEncontradaTitulo: 'Actividad no encontrada',
+    homeTitle: 'Seleccioná una actividad para empezar',
+    homeSubtitle: 'Esta pantalla inicial dirige a cada actividad usando la URL.',
+    start: 'Comenzar',
     actividad: 'Actividad',
     variante: 'Variante',
     guiaTitulo: 'Cómo trabajar esta actividad',
@@ -47,6 +53,9 @@ const textosApp: Record<
     idiomaOptions: { es: 'Spanish', en: 'English', pt: 'Portuguese' },
     actividadNoEncontrada: 'The requested activity does not exist in the registry.',
     actividadNoEncontradaTitulo: 'Activity not found',
+    homeTitle: 'Choose an activity to start',
+    homeSubtitle: 'This start screen routes to each activity using the URL.',
+    start: 'Start',
     actividad: 'Activity',
     variante: 'Variant',
     guiaTitulo: 'How to work on this activity',
@@ -65,6 +74,9 @@ const textosApp: Record<
     idiomaOptions: { es: 'Espanhol', en: 'Inglês', pt: 'Português' },
     actividadNoEncontrada: 'A atividade solicitada não existe no registro.',
     actividadNoEncontradaTitulo: 'Atividade não encontrada',
+    homeTitle: 'Escolha uma atividade para começar',
+    homeSubtitle: 'Esta tela inicial direciona para cada atividade usando a URL.',
+    start: 'Iniciar',
     actividad: 'Atividade',
     variante: 'Variante',
     guiaTitulo: 'Como trabalhar esta atividade',
@@ -78,8 +90,31 @@ const textosApp: Record<
   },
 };
 
+const opcionesActividadPorIdioma: Record<LangCode, Array<{ id: ActivityId; label: string }>> = {
+  es: [
+    { id: 'microcopy-ia-01', label: '01 · Prompt guiado' },
+    { id: 'microcopy-ia-02', label: '02 · Elegí la mejor opción' },
+    { id: 'microcopy-ia-03', label: '03 · Auditoría de microcopy' },
+  ],
+  en: [
+    { id: 'microcopy-ia-01', label: '01 · Guided prompt' },
+    { id: 'microcopy-ia-02', label: '02 · Choose the best option' },
+    { id: 'microcopy-ia-03', label: '03 · Broken microcopy audit' },
+  ],
+  pt: [
+    { id: 'microcopy-ia-01', label: '01 · Prompt guiado' },
+    { id: 'microcopy-ia-02', label: '02 · Escolha a melhor opção' },
+    { id: 'microcopy-ia-03', label: '03 · Auditoria de microcopy' },
+  ],
+};
+
+function hasActivityInUrl(search = window.location.search): boolean {
+  return new URLSearchParams(search).has('a');
+}
+
 function App(): JSX.Element {
   const [query, setQuery] = useState<QueryState>(() => leerQueryParams());
+  const [showHome, setShowHome] = useState<boolean>(() => !hasActivityInUrl());
 
   useEffect(() => {
     const resetDone = window.sessionStorage.getItem(SESSION_RESET_KEY);
@@ -93,13 +128,23 @@ function App(): JSX.Element {
   }, []);
 
   useEffect(() => {
-    const onPopState = (): void => setQuery(leerQueryParams());
+    const onPopState = (): void => {
+      setQuery(leerQueryParams());
+      setShowHome(!hasActivityInUrl());
+    };
     window.addEventListener('popstate', onPopState);
     return () => window.removeEventListener('popstate', onPopState);
   }, []);
 
   const textos = useMemo(() => textosApp[query.lang], [query.lang]);
+  const opcionesActividad = useMemo(() => opcionesActividadPorIdioma[query.lang], [query.lang]);
   const config = ACTIVITY_REGISTRY[query.a];
+
+  const goToActivity = (activityId: ActivityId): void => {
+    const next = actualizarQueryParams({ a: activityId });
+    setQuery(next);
+    setShowHome(false);
+  };
 
   return (
     <div className="app-shell">
@@ -111,21 +156,37 @@ function App(): JSX.Element {
       </header>
 
       <main className="app-main">
-        <section className="card alumno-help">
-          <h2>{textos.guiaTitulo}</h2>
-          <ol>
-            {textos.guiaPasos.map((paso) => (
-              <li key={paso}>{paso}</li>
-            ))}
-          </ol>
-        </section>
-        {config ? (
-          <ActivityShell activityId={query.a} lang={query.lang} variant={query.variant} />
-        ) : (
-          <section className="card alert alert-error">
-            <h2>{textos.actividadNoEncontradaTitulo}</h2>
-            <p>{textos.actividadNoEncontrada}</p>
+        {showHome ? (
+          <section className="card home-card">
+            <h2>{textos.homeTitle}</h2>
+            <p className="muted">{textos.homeSubtitle}</p>
+            <div className="home-actions">
+              {opcionesActividad.map((opcion) => (
+                <button key={opcion.id} type="button" className="btn btn-primary" onClick={() => goToActivity(opcion.id)}>
+                  {textos.start}: {opcion.label}
+                </button>
+              ))}
+            </div>
           </section>
+        ) : (
+          <>
+            <section className="card alumno-help">
+              <h2>{textos.guiaTitulo}</h2>
+              <ol>
+                {textos.guiaPasos.map((paso) => (
+                  <li key={paso}>{paso}</li>
+                ))}
+              </ol>
+            </section>
+            {config ? (
+              <ActivityShell activityId={query.a} lang={query.lang} variant={query.variant} />
+            ) : (
+              <section className="card alert alert-error">
+                <h2>{textos.actividadNoEncontradaTitulo}</h2>
+                <p>{textos.actividadNoEncontrada}</p>
+              </section>
+            )}
+          </>
         )}
       </main>
 
