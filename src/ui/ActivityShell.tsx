@@ -1,8 +1,9 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { ActivityConfig, ActivityId, ActivityState, BlockProps, LangCode, QueryState, Variant } from '../core/types';
 import { ACTIVITY_REGISTRY } from '../core/activityRegistry';
 import { validarActividad } from '../core/validators';
 import { activityStorageKey } from '../core/query';
+import { PGEvent, type PGEventPayload } from '../shared/pg-event';
 import { activityMicrocopyIA01Localized } from '../activities/microcopy-ia-01';
 import { activityMicrocopyIA02Localized } from '../activities/microcopy-ia-02';
 import { activityMicrocopyIA03Localized } from '../activities/microcopy-ia-03';
@@ -41,6 +42,8 @@ const shellText: Record<
         reviewHint: string;
         blockNotFound: string;
         validate: string;
+        successMessage: string;
+        failureMessage: string;
         stage1: string;
         stage2: string;
         stage3: string;
@@ -55,6 +58,8 @@ const shellText: Record<
         reviewHint: 'Antes de validar, verificá que cumplís todas estas reglas.',
         blockNotFound: 'Bloque no encontrado',
         validate: 'Validar',
+        successMessage: 'Actividad completada correctamente.',
+        failureMessage: 'Hubo errores en la actividad.',
         stage1: 'Etapa 1 · Construcción manual del prompt',
         stage2: 'Etapa 2 · Generación con IA',
         stage3: 'Etapa 3 · Validación humana',
@@ -68,6 +73,8 @@ const shellText: Record<
         reviewHint: 'Before validating, make sure you meet all these rules.',
         blockNotFound: 'Block not found',
         validate: 'Validate',
+        successMessage: 'Activity completed successfully.',
+        failureMessage: 'There were errors in the activity.',
         stage1: 'Stage 1 · Manual prompt creation',
         stage2: 'Stage 2 · AI generation',
         stage3: 'Stage 3 · Human validation',
@@ -81,6 +88,8 @@ const shellText: Record<
         reviewHint: 'Antes de validar, confira se você cumpre todas estas regras.',
         blockNotFound: 'Bloco não encontrado',
         validate: 'Validar',
+        successMessage: 'Atividade concluida corretamente.',
+        failureMessage: 'Houve erros na atividade.',
         stage1: 'Etapa 1 · Construção manual do prompt',
         stage2: 'Etapa 2 · Geração com IA',
         stage3: 'Etapa 3 · Validação humana',
@@ -170,6 +179,8 @@ export function ActivityShell({ activityId, lang, variant }: Props): JSX.Element
     const t = shellText[lang];
     const query = useMemo<QueryState>(() => ({ a: activityId, lang, variant }), [activityId, lang, variant]);
     const [state, setState] = useState<ActivityState>(() => loadState(config, query));
+    const pgEventRef = useRef<PGEvent | null>(null);
+    const pgValuesRef = useRef<{ id: string } | null>(null);
 
     const totalChecks = config.checklistHumano.length;
     const checksCompletados = state.checklistMarcado.length;
@@ -192,12 +203,52 @@ export function ActivityShell({ activityId, lang, variant }: Props): JSX.Element
         window.localStorage.setItem(key, JSON.stringify(state));
     }, [query, state]);
 
+    useEffect(() => {
+        pgEventRef.current = new PGEvent();
+        pgValuesRef.current = pgEventRef.current.getValues();
+    }, []);
+
     const onValidate = (): void => {
         const resultado = validarActividad(config, state, lang);
-        setState((prev) => ({
-            ...prev,
+        const nextState: ActivityState = {
+            ...state,
             resultadosValidacion: resultado,
-        }));
+        };
+
+        setState(nextState);
+
+        const reasons = resultado.errores;
+        const pgPayload: PGEventPayload = {
+            event: resultado.ok ? 'SUCCESS' : 'FAILURE',
+            id: pgValuesRef.current?.id ?? '',
+            reasons,
+            message: resultado.ok
+                ? t.successMessage ?? 'Actividad completada correctamente.'
+                : t.failureMessage ?? 'Hubo errores en la actividad.',
+            state: JSON.stringify({
+                activityId: config.id,
+                lang,
+                variant,
+                ok: resultado.ok,
+                totalErrores: reasons.length,
+                checklistCompletado: state.checklistMarcado.length,
+                checklistTotal: config.checklistHumano.length,
+                respuesta: {
+                    promptAlumno: state.promptAlumno,
+                    opcionElegida: state.opcionElegida,
+                    justificacion: state.justificacion,
+                    tablaAuditoria: state.tablaAuditoria,
+                    opcionesIA: state.opcionesIA,
+                    promptEstructuraOK: state.promptEstructuraOK,
+                },
+                resultado,
+            }),
+        };
+
+        console.log('pgEvent values', pgValuesRef.current);
+        console.log('pgEvent validationResult', resultado);
+        console.log('pgEvent payload', pgPayload);
+        pgEventRef.current?.postToPg(pgPayload);
     };
 
     const blocksVisibles = config.ui.blocks.filter((blockId) => !(blockId === 'GroqGenerate' && !config.supportsAI));
