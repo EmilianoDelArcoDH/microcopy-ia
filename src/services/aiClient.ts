@@ -45,44 +45,49 @@ export class GroqAIClient implements AIClient {
     private readonly apiKey: string;
     private readonly model: string;
 
-    constructor(apiKey: string, model = 'llama-3.1-8b-instant') {
+    constructor(apiKey: string, model = 'openai/gpt-oss-20b') {
         this.apiKey = apiKey;
         this.model = model;
     }
 
     async generateMicrocopy(prompt: string): Promise<string[]> {
-        const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                Authorization: `Bearer ${this.apiKey}`,
-            },
-            body: JSON.stringify({
-                model: this.model,
-                temperature: 0.4,
-                messages: [{ role: 'user', content: prompt }],
-            }),
-        });
+        try {
+            const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    Authorization: `Bearer ${this.apiKey}`,
+                },
+                body: JSON.stringify({
+                    model: this.model,
+                    temperature: 0.4,
+                    messages: [{ role: 'user', content: prompt }],
+                }),
+            });
 
-        if (!response.ok) {
-            throw new Error(`Groq respondió con estado ${response.status}`);
-        }
+            if (!response.ok) {
+                console.warn(`Groq respondió con estado ${response.status}; se usará MockAIClient.`);
+                return new MockAIClient().generateMicrocopy(prompt);
+            }
 
-        const payload = (await response.json()) as {
-            choices?: Array<{ message?: { content?: string } }>;
-        };
-        const content = payload.choices?.[0]?.message?.content ?? '';
+            const payload = (await response.json()) as {
+                choices?: Array<{ message?: { content?: string } }>;
+            };
+            const content = payload.choices?.[0]?.message?.content ?? '';
 
-        const opciones = content
-            .split('\n')
-            .map((linea) => linea.trim())
-            .filter((linea) => /^\d+[\).\-\s]/.test(linea))
-            .map((linea) => linea.replace(/^\d+[\).\-\s]*/, '').trim())
-            .filter(Boolean)
-            .slice(0, 3);
+            const opciones = content
+                .split('\n')
+                .map((linea) => linea.trim())
+                .filter((linea) => /^\d+[\).\-\s]/.test(linea))
+                .map((linea) => linea.replace(/^\d+[\).\-\s]*/, '').trim())
+                .filter(Boolean)
+                .slice(0, 3);
 
-        if (opciones.length === 3) {
-            return opciones;
+            if (opciones.length === 3) {
+                return opciones;
+            }
+        } catch (error) {
+            console.warn('No se pudo conectar con Groq; se usará MockAIClient.', error);
         }
 
         return new MockAIClient().generateMicrocopy(prompt);
